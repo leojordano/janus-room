@@ -1,5 +1,6 @@
-const Janus = window.Janus = require('./janus');
-const volumeMeter = require('volume-meter-skip');
+import Janus from './janus.js';
+import volumeMeter from 'volume-meter-skip';
+window.Janus = Janus;
 
 window.AudioContext = window.AudioContext || window.webkitAudioContext;
 
@@ -33,7 +34,7 @@ function publishOwnFeed(opts, cb) {
         videoRecv: false,
         audioSend: opts.audioSend,
         replaceAudio: opts.replaceAudio,
-        videoSend: Janus.webRTCAdapter.browserDetails.browser === 'safari' ? false : opts.videoSend,
+        videoSend: true,
         replaceVideo: opts.replaceVideo,
         data: true,
       }, // Publishers are sendonly
@@ -44,7 +45,7 @@ function publishOwnFeed(opts, cb) {
         var publish = {
           "request": "configure",
           "audio": opts.audioSend,
-          "video": Janus.webRTCAdapter.browserDetails.browser === 'safari' ? false : true,
+          "video": true,
           "data": true,
         };
         if (config.token) publish.token = config.token;
@@ -194,8 +195,7 @@ function start() {
           success: function() {
 
             // Attach to video room plugin
-            config.janus.attach(
-              {
+            config.janus.attach({
                 plugin: "janus.plugin.videoroom",
                 opaqueId: config.opaqueId,
                 success: function(pluginHandle) {
@@ -231,22 +231,25 @@ function start() {
 
                   var event = msg["videoroom"];
                   Janus.debug("Event: " + event);
+
                   if (event != undefined && event != null) {
                     if (event === "joined" && !config.isShareScreenActive) {
                       // Publisher/manager created, negotiate WebRTC and attach to existing feeds, if any
                       config.myid = msg["id"];
                       config.mypvtid = msg["private_id"];
                       Janus.log("Successfully joined room " + msg["room"] + " with ID " + config.myid);
+
                       if (config.publishOwnFeed) {
                         publishOwnFeed({
                           audioSend: true
                         });
                       }
+
                       // Any new feed to attach to?
                       if (msg["publishers"] !== undefined && msg["publishers"] !== null) {
                         var list = msg["publishers"];
                         Janus.debug("Got a list of available publishers/feeds:");
-                        Janus.debug(list);
+
                         for (var f in list) {
                           var id = list[f]["id"];
                           var display = list[f]["display"];
@@ -255,7 +258,9 @@ function start() {
                           Janus.debug("  >> [" + id + "] " + display + " (audio: " + audio + ", video: " + video + ")");
                           newRemoteFeed(id, display, audio, video);
                         }
+
                       }
+
                     } else if (event === 'slow_link') {
                       if (result) {
                         var uplink = result["uplink"];
@@ -308,6 +313,7 @@ function start() {
                           config.feeds[remoteFeed.rfindex] = null;
                           remoteFeed.detach();
                         }
+                        
                       } else if (msg["unpublished"] !== undefined && msg["unpublished"] !== null) {
                         // One of the publishers has unpublished?
                         var unpublished = msg["unpublished"];
@@ -338,6 +344,7 @@ function start() {
                       }
                     }
                   }
+
                   if (jsep !== undefined && jsep !== null) {
                     Janus.debug("Handling SDP as well...");
                     Janus.debug(jsep);
@@ -363,6 +370,7 @@ function start() {
                   Janus.debug(" ::: Got a local stream :::");
                   config.mystream = window.mystream = stream; // attach to global for debugging purpose
                   if (config.mystream.getVideoTracks().length > 0) {
+
                     config.mystream.getVideoTracks()[0].onended = function(){
                       if (config.isShareScreenActive && config.publishOwnFeed) {
                         console.log('Put back the webcam');
@@ -374,9 +382,12 @@ function start() {
                         });
                       }
                     }
+
                   }
+
                   Janus.debug(stream);
                   config.onLocalJoin();
+                  
                   if (config.onVolumeMeterUpdate) {
                     let ctx = new AudioContext();
                     let meter = volumeMeter(ctx, { tweenIn:2, tweenOut:6, skip:config.volumeMeterSkip}, (volume) => {
@@ -386,6 +397,7 @@ function start() {
                     src.connect(meter);
                     config.mystream.onended = meter.stop.bind(meter);
                   }
+
                 },
                 onremotestream: function(stream) {
                   // The publisher stream is sendonly, we don't expect anything here
@@ -563,19 +575,23 @@ function newRemoteFeed(id, display, audio, video) {
           "feed": id,
           "private_id": config.mypvtid
         };
+        
         if (config.token) listen.token = config.token;
         // In case you don't want to receive audio, video or data, even if the
         // publisher is sending them, set the 'offer_audio', 'offer_video' or
         // 'offer_data' properties to false (they're true by default), e.g.:
         // 		listen["offer_video"] = false;
         // For example, if the publisher is VP8 and this.is Safari, let's avoid video
-        if (video !== "h264" && Janus.webRTCAdapter.browserDetails.browser === "safari") {
+
+        if(Janus.webRTCAdapter.browserDetails.browser === "safari" && (video === "vp9" || (video === "vp8" && !Janus.safariVp8))) {
           if (video) {
             video = video.toUpperCase()
           }
+          console.log('Janus: caiu aqui!!')
           Janus.debug("Publisher is using " + video + ", but Safari doesn't support it: disabling video");
           listen["offer_video"] = false;
         }
+
         listen["offer_data"] = true;
         remoteFeed.videoCodec = video;
         remoteFeed.send({
@@ -693,11 +709,13 @@ function newRemoteFeed(id, display, audio, video) {
       onremotestream: function(stream) {
         Janus.debug("Remote feed #" + remoteFeed.rfindex);
         
+        console.log('Remote stream is ',stream)
         config.remotestreams[remoteFeed.rfindex] = {}
         config.remotestreams[remoteFeed.rfindex].index = remoteFeed.rfindex;
         config.remotestreams[remoteFeed.rfindex].feedId = remoteFeed.getId();
         config.remotestreams[remoteFeed.rfindex].stream = stream;
-        config.onRemoteJoin(remoteFeed.rfindex, remoteFeed.rfdisplay, remoteFeed.getId());
+        config.onRemoteJoin(remoteFeed.rfindex, remoteFeed.rfdisplay, remoteFeed.getId(), stream);
+
         if (config.onVolumeMeterUpdate) {
           let ctx = new AudioContext();
           let meter = volumeMeter(ctx, { tweenIn:2, tweenOut:6, skip:config.volumeMeterSkip}, (volume) => {
@@ -708,6 +726,7 @@ function newRemoteFeed(id, display, audio, video) {
           config.remotestreams[remoteFeed.rfindex].stream.onended = meter.stop.bind(meter);
           config.remotestreams[remoteFeed.rfindex].feed = remoteFeed;
         }
+
       },
       oncleanup: function() {
         Janus.log(" ::: Got a cleanup notification (remote feed " + id + ") :::");
@@ -742,6 +761,8 @@ class Room {
     config.token = options.token || null;
     config.useRecordPlugin = options.useRecordPlugin || false;
     config.volumeMeterSkip = options.volumeMeterSkip || 0;
+    config.mainCameraElement = options.mainCameraElement || null;
+
     // Events
     config.onLocalJoin = options.onLocalJoin || null;
     config.onRemoteJoin = options.onRemoteJoin || null;
@@ -913,14 +934,21 @@ class Room {
     });
   }
 
-  attachStream(target, index) {
+  attachStream(target, stream) {
     return new Promise((resolve, reject) => {
       try {
-        if (index === 0) {
-          Janus.attachMediaStream(target, config.mystream);
-        } else {
-          Janus.attachMediaStream(target, config.remotestreams[index].stream);
-        }
+        Janus.attachMediaStream(target, stream);
+        resolve();
+      } catch ( err ) {
+        reject(err);
+      }
+    });
+  }
+
+  reAttachStream(to, from) {
+    return new Promise((resolve, reject) => {
+      try {
+        Janus.reattachMediaStream(to, from);
         resolve();
       } catch ( err ) {
         reject(err);
@@ -968,9 +996,6 @@ class Room {
 
   shareScreen() {
     return new Promise((resolve, reject) => {
-      if (Janus.webRTCAdapter.browserDetails.browser === 'safari') {
-        reject(new Error('No video support for Safari browser.'));
-      }
       if (!config.publishOwnFeed) {
         return reject();
       }
@@ -1194,4 +1219,4 @@ class Room {
 
 }
 
-module.exports = Room;
+export default Room;

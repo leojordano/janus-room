@@ -1,4 +1,5 @@
-window.Room = require('./src');
+import Room from './index.js'
+window.Room = Room
 
 var room;
 var server = 'https://gw.tarsius.id:8089/janus';
@@ -6,7 +7,7 @@ var roomId = 13371; // Demo room
 var username = 'user' + (new Date()).valueOf()
 var publishOwnFeed = false;
 if (!username) {
-  return alert('Username is needed. Please refresh');
+  alert('Username is needed. Please refresh');
 }
 publishOwnFeed = window.confirm("Publish own feed?")
 alert(publishOwnFeed)

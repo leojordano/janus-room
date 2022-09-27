@@ -1,8 +1,9 @@
 {
-  "name": "janus-room",
-  "version": "0.1.54",
+  "name": "new-janus-room",
+  "version": "0.1.73",
   "description": "",
-  "main": "src.js",
+  "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "./node_modules/.bin/browserify example.js -o bundle.js"
